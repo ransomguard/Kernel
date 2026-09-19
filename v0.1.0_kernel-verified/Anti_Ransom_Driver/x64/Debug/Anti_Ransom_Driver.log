@@ -1,0 +1,32 @@
+﻿  Building 'Anti_Ransom_Driver' with toolset 'WindowsKernelModeDriver10.0' and the 'Desktop' target platform.
+  Stamping x64\Debug\Anti_Ransom_Driver.inf
+  Stamping [Version] section with DriverVer=09/18/2026,22.23.30.297
+  Communication.c
+  Driver.c
+  Eventqueue.c
+  ProcessMonitor.c
+  ResponseEngine.c
+  SelfProtect.c
+  코드를 생성하고 있습니다...
+  Anti_Ransom_Driver.vcxproj -> D:\4_grade\4_2\Anti_Ransom_capstone\Anti_Ransom_Kernel\x64\Debug\Anti_Ransom_Driver.sys
+  Done Adding Additional Store
+  Successfully signed: D:\4_grade\4_2\Anti_Ransom_capstone\Anti_Ransom_Kernel\x64\Debug\Anti_Ransom_Driver.sys
+  
+  ........................
+  Signability test complete.
+  
+  Errors:
+  None
+  
+  Warnings:
+  None
+  
+  Catalog generation complete.
+  D:\4_grade\4_2\Anti_Ransom_capstone\Anti_Ransom_Kernel\x64\Debug\Anti_Ransom_Driver\anti_ransom_driver.cat
+  Set catalog attribute.
+  WdkVersion: 10.0.26100.0
+  Set catalog attribute.
+  WdkAssemblyVersion: 10.0.26100.6584
+  Done Adding Additional Store
+  Successfully signed: D:\4_grade\4_2\Anti_Ransom_capstone\Anti_Ransom_Kernel\x64\Debug\Anti_Ransom_Driver\anti_ransom_driver.cat
+  
