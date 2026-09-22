@@ -9,6 +9,7 @@
 !*.cpp
 !*.h
 !*.hpp
+!*.md
 
 # 4) .gitignore 자체는 추적
 !.gitignore
