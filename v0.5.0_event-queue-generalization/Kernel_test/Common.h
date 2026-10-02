@@ -1,0 +1,301 @@
+﻿#pragma once
+// ---------------------------------------------------------------
+// Toolchain
+//   ntifs.h -> ntddk.h -> wdf.h 순서를 여기서 일괄 보장 (Driver.h:6 규약)
+//   모든 하위 헤더(Driver.h / Communication.h / Eventqueue.h /
+//   ProcessMonitor.h / ResponseEngine.h / SelfProtect.h)가 이 블록에 의존한다.
+//   순서를 바꾸거나 항목을 빼면 전 파일에서 WDF 타입이 증발한다.
+// ---------------------------------------------------------------
+#ifdef _KERNEL_MODE
+#include <ntifs.h>
+#include <ntddk.h>
+#include <wdf.h>
+#else
+#include <windows.h>
+#include <winioctl.h>
+#endif
+
+// ---------------------------------------------------------------
+// Limits
+//   CMDLINE 512 WCHAR 근거: ImagePath 520B + CommandLine 1024B + 스칼라 64B
+//   = 1608B. ProcessMonitor.c:231 "약 1.6KB" 와 일치.
+//   1024 WCHAR였다면 2632B(2.6KB)가 되어 주석과 어긋남.
+// ---------------------------------------------------------------
+#define ARW_MAX_PATH_LENGTH        260U    // WCHAR 개수
+#define ARW_MAX_CMDLINE_LENGTH     512U    // WCHAR 개수
+#define ARW_EVENT_QUEUE_MAX_DEPTH  1024U   // U 접미사: EventQueue.c:193 C4018 해소
+
+// ARW_FILE_EVENT 전용. \\?\ 접두 Long Path 로 탐지를 우회하는 기법 방지
+// (CLAUDE.md 5절 규칙 6). 260 으로 두면 절단된 경로가 상관분석·복구에 올라간다.
+#define ARW_MAX_EXTENDED_PATH      1024U   // WCHAR 개수
+// Phobos/Dharma 계열 ".id[XXXXXXXX-XXXX].[addr@mail.ch].ext" ≈ 46자 수용
+#define ARW_MAX_EXTENSION_LENGTH   64U     // WCHAR 개수
+
+#define ARW_POOL_TAG               'pWRA'  // WinDbg 표시: "ARWp"
+
+// ---------------------------------------------------------------
+// Device naming
+//   DECLARE_CONST_UNICODE_STRING 인자 — 반드시 와이드 리터럴이어야 한다.
+//   user-mode: CreateFileW(L"\\\\.\\RansomGuard", ...)
+// ---------------------------------------------------------------
+#define ARW_NTDEVICE_NAME_STRING   L"\\Device\\RansomGuard"
+#define ARW_SYMBOLIC_NAME_STRING   L"\\DosDevices\\RansomGuard"
+
+// ---------------------------------------------------------------
+// Kernel-to-kernel: Anti_Ransom_FsFilter -> Anti_Ransom_Driver
+//   두 드라이버는 별개 .sys 다. 미니필터가 만든 ARW_FILE_EVENT 는 이
+//   이름의 콜백 객체(ExCreateCallback / ExNotifyCallback)로 메인 드라이버에
+//   전달되고, 메인 드라이버가 헤더(Magic/Version/TimeStamp/Seq)를 채워
+//   이벤트 큐에 넣는다. ExNotifyCallback 의 Argument1 == PARW_FILE_EVENT,
+//   Argument2 == NULL 이 규약. 커널 전용.
+// ---------------------------------------------------------------
+#ifdef _KERNEL_MODE
+#define ARW_FILE_EVENT_CALLBACK_NAME  L"\\Callback\\ArwFileEvent"
+#endif
+
+// ---------------------------------------------------------------
+// Protocol
+//   ArwpValidateHeader() 에서 '!=' 로 ULONG 과 비교된다.
+//   U 접미사 없으면 C4389 (signed/unsigned 불일치) 재발.
+// ---------------------------------------------------------------
+#define ARW_HEADER_MAGIC     0x41525747U   // 'ARWG'
+#define ARW_DRIVER_VERSION   0x00010000U   // major.minor, %08X 로 로깅됨
+
+// ---------------------------------------------------------------
+// Event types`
+// ---------------------------------------------------------------
+#define EVENT_TYPE_PROCESS_CREATE     1U
+#define EVENT_TYPE_PROCESS_TERMINATE  2U
+#define EVENT_TYPE_PROCESS_BLOCKED    3U
+#define EVENT_TYPE_FILE_WRITE         4U   // ARW_FILE_EVENT, OperationType == ARW_FILE_OP_WRITE
+#define EVENT_TYPE_FILE_RENAME        5U   // ARW_FILE_EVENT, OperationType == ARW_FILE_OP_RENAME
+
+// ---------------------------------------------------------------
+// Fast-path mode
+//   Driver.c:136 의 '<= ARW_FASTPATH_MODE_BLOCK' 범위 검사로 보아
+//   BLOCK 이 최대값. 중간 단계(AUDIT)는 추정.
+// ---------------------------------------------------------------
+#define ARW_FASTPATH_MODE_OFF      0U
+#define ARW_FASTPATH_MODE_AUDIT    1U   // [추정] 원본 명칭 미상
+#define ARW_FASTPATH_MODE_BLOCK    2U
+
+// ---------------------------------------------------------------
+// ARW_PROCESS_EVENT.Flags
+// ---------------------------------------------------------------
+#define ARW_PROC_FLAG_PARENT_SPOOF_SUSP  (1U << 0)
+#define ARW_PROC_FLAG_PATH_UNAVAILABLE   (1U << 1)
+#define ARW_PROC_FLAG_PATH_TRUNCATED     (1U << 2)
+#define ARW_PROC_FLAG_CMDLINE_TRUNCATED  (1U << 3)
+#define ARW_PROC_FLAG_FASTPATH_HIT       (1U << 4)
+#define ARW_PROC_FLAG_BLOCKED            (1U << 5)  
+
+// ---------------------------------------------------------------
+// ARW_FILE_EVENT.OperationType
+//   enum 이 아닌 ULONG + #define — enum 은 크기·부호가 컴파일 옵션에
+//   좌우되므로 유저/커널 경계 구조체에서는 4바이트로 고정한다
+//   (ARW_POLICY_REQUEST 의 Enable* 와 같은 이유).
+// ---------------------------------------------------------------
+#define ARW_FILE_OP_WRITE    1U
+#define ARW_FILE_OP_RENAME   2U
+
+// ---------------------------------------------------------------
+// ARW_FILE_EVENT.Flags
+// ---------------------------------------------------------------
+#define ARW_FILE_FLAG_PATH_TRUNCATED     (1U << 0)   // FilePath 가 ARW_MAX_EXTENDED_PATH 에 잘림
+#define ARW_FILE_FLAG_EXT_TRUNCATED      (1U << 1)   // NewExtension 이 ARW_MAX_EXTENSION_LENGTH 에 잘림
+#define ARW_FILE_FLAG_PATH_UNAVAILABLE   (1U << 2)   // FltGetFileNameInformation 실패 등으로 경로 미확보
+
+#pragma pack(push, 8)
+
+// ---------------------------------------------------------------
+// IOCTL_RG_REGISTER_ENGINE payload
+//   PID 는 담지 않는다. ArwpHandleRegisterEngine 이
+//   PsGetCurrentProcessId() 로 직접 확인하므로 유저가 신고하는 PID 는
+//   신뢰 대상이 아니다.
+// ---------------------------------------------------------------
+typedef struct _ARW_REGISTER_REQUEST {
+    ULONG Magic;      // == ARW_HEADER_MAGIC
+    ULONG Version;    // == ARW_DRIVER_VERSION
+} ARW_REGISTER_REQUEST, * PARW_REGISTER_REQUEST;
+C_ASSERT(sizeof(ARW_REGISTER_REQUEST) == 8);
+
+// ---------------------------------------------------------------
+// Event header
+//   ArwEventInitializeHeader(&ev->Header, EVENT_TYPE_x, sizeof(...))
+//   3인자 시그니처로부터 Type/Size 는 인자, Version/Timestamp 는 내부 설정.
+// ---------------------------------------------------------------
+typedef struct _ARW_EVENT_HEADER {
+    ULONG    Magic;
+    ULONG    Version;
+    ULONG    EventType;
+    ULONG    PayloadSize;
+    ULONG64  TimeStamp;       // KeQuerySystemTimePrecise, 100ns
+    ULONG64  SequenceNumber;  // InterlockedIncrement64
+} ARW_EVENT_HEADER, * PARW_EVENT_HEADER;
+
+// 헤더가 밀리면 ARW_PROCESS_EVENT / ARW_FILE_EVENT 가 동시에 깨진다.
+C_ASSERT(sizeof(ARW_EVENT_HEADER) == 32);
+
+// ---------------------------------------------------------------
+// Process event
+//   PID 는 HANDLE 이 아닌 ULONG.
+//   x64 커널 <-> x86 VssComHook 간 레이아웃 일치를 위한 의도적 선택.
+//   콜백에서 받은 HANDLE 은 HandleToULong() 경유.
+// ---------------------------------------------------------------
+typedef struct _ARW_PROCESS_EVENT {
+    ARW_EVENT_HEADER Header;                            //    0
+
+    ULONG    ProcessId;                                 //   24
+    ULONG    ParentProcessId;                           //   28
+    ULONG    CreatorProcessId;                          //   32
+    ULONG    Flags;                                     //   36  ARW_PROC_FLAG_*
+
+    LONGLONG ProcessCreateTime;                         //   40  PID 재사용 방어
+    ULONG    MatchedRuleId;                             //   48
+    ULONG    ImagePathLength;                           //   52  바이트, NUL 제외
+    ULONG    CommandLineLength;                         //   56  바이트, NUL 제외
+    ULONG    Reserved;                                  //   60  8바이트 정렬 유지
+
+    WCHAR    ImagePath[ARW_MAX_PATH_LENGTH];            //   64  520B
+    WCHAR    CommandLine[ARW_MAX_CMDLINE_LENGTH];       //  584 1024B
+} ARW_PROCESS_EVENT, * PARW_PROCESS_EVENT;               // total 1608B
+
+C_ASSERT(sizeof(ARW_PROCESS_EVENT) == 1616);            // "약 1.6KB" 검증선
+C_ASSERT(FIELD_OFFSET(ARW_PROCESS_EVENT, ProcessCreateTime) % 8 == 0);
+
+// ---------------------------------------------------------------
+// File event
+//   FileMonitor(미니필터) -> 엔진. ARW_PROCESS_EVENT 와 별개 구조체.
+//   Header.EventType 은 EVENT_TYPE_FILE_WRITE / EVENT_TYPE_FILE_RENAME,
+//   OperationType 은 ARW_FILE_OP_* — 둘은 항상 일치해야 한다.
+//   NewExtension 은 OperationType == ARW_FILE_OP_RENAME 일 때만 채우고,
+//   그 외에는 NewExtensionLength == 0, 버퍼는 0 으로 채운다 (규칙 7).
+//   [엔진 측 규약] NewExtension 은 **점(.) 없이** 전달한다 — "txt", "locky".
+//     FltParseFileNameInformation 의 Extension 규약 그대로. 확장자가 없는
+//     이름으로 바뀌면 NewExtensionLength == 0. Python 상관분석은 비교 시
+//     점을 붙이지 말고 그대로 쓸 것.
+//   FilePath 는 rename 의 경우 **원본(이전) 경로**다. 대상 전체 경로는
+//     전달하지 않는다(확장자만).
+//   길이 필드는 ImagePathLength 와 동일하게 바이트 단위, NUL 제외.
+// ---------------------------------------------------------------
+typedef struct _ARW_FILE_EVENT {
+    ARW_EVENT_HEADER Header;                            //    0  32B
+
+    ULONG    ProcessId;                                 //   32  HandleToULong() 경유
+    ULONG    OperationType;                             //   36  ARW_FILE_OP_*
+    ULONG    FilePathLength;                            //   40  바이트, NUL 제외
+    ULONG    NewExtensionLength;                        //   44  바이트, NUL 제외. Write 는 0
+    ULONG    Flags;                                     //   48  ARW_FILE_FLAG_*
+    ULONG    Reserved;                                  //   52  8바이트 정렬 유지
+
+    WCHAR    FilePath[ARW_MAX_EXTENDED_PATH];           //   56  2048B
+    WCHAR    NewExtension[ARW_MAX_EXTENSION_LENGTH];    // 2104   128B
+} ARW_FILE_EVENT, * PARW_FILE_EVENT;                     // total 2232B
+
+C_ASSERT(sizeof(ARW_FILE_EVENT) == 2232);
+C_ASSERT(FIELD_OFFSET(ARW_FILE_EVENT, FilePath) % 8 == 0);
+
+// ---------------------------------------------------------------
+// Any event
+//   이벤트 큐 노드와 IOCTL_RG_GET_EVENT 출력 버퍼의 공통 크기.
+//   GET_EVENT 는 어떤 타입이 나올지 모르므로 유저 모드는 반드시
+//   ARW_MAX_EVENT_SIZE 이상의 버퍼를 걸어야 한다(작으면 BUFFER_TOO_SMALL).
+//   수신 후 Header.EventType 으로 Process / File 중 하나를 해석하고,
+//   실제 유효 바이트 수는 Header.PayloadSize 다.
+// ---------------------------------------------------------------
+typedef union _ARW_EVENT_ANY {
+    ARW_EVENT_HEADER  Header;
+    ARW_PROCESS_EVENT Process;
+    ARW_FILE_EVENT    File;
+} ARW_EVENT_ANY, * PARW_EVENT_ANY;
+
+#define ARW_MAX_EVENT_SIZE  sizeof(ARW_EVENT_ANY)
+
+C_ASSERT(sizeof(ARW_EVENT_ANY) == 2232);                // == 가장 큰 멤버(ARW_FILE_EVENT)
+C_ASSERT(FIELD_OFFSET(ARW_PROCESS_EVENT, Header) == 0);  // 모든 이벤트는 헤더로 시작
+C_ASSERT(FIELD_OFFSET(ARW_FILE_EVENT, Header) == 0);
+
+// ---------------------------------------------------------------
+// Kill request
+//   ResponseEngine.h:18 — ExpectedCreateTime 에 위 ProcessCreateTime 을 그대로 전달.
+//   ZwTerminateProcess 직전 재확인하여 PID 재사용 오살(誤殺) 차단.
+// ---------------------------------------------------------------
+typedef struct _ARW_TERMINATE_REQUEST {
+    ULONG    Magic;
+    ULONG    Version;
+    ULONG    TargetProcessId;
+    ULONG    Reason;
+    LONGLONG ExpectedCreateTime;   // ResponseEngine.h:18 근거
+} ARW_TERMINATE_REQUEST, * PARW_TERMINATE_REQUEST;
+
+typedef struct _ARW_TERMINATE_RESPONSE {
+    ULONG    Magic;
+    ULONG    Version;
+    ULONG    TargetProcessId;
+    NTSTATUS ResultStatus;
+} ARW_TERMINATE_RESPONSE, * PARW_TERMINATE_RESPONSE;
+
+// ---------------------------------------------------------------
+// IOCTL_RG_GET_STATUS 출력
+// ---------------------------------------------------------------
+typedef struct _ARW_STATUS_RESPONSE {
+    ULONG   Magic;
+    ULONG   Version;
+    ULONG   EngineProcessId;
+    ULONG   FastPathMode;          // ARW_FASTPATH_MODE_*
+    ULONG   SelfProtectEnabled;
+    ULONG   QueueDepth;
+    ULONG64 EventsGenerated;
+    ULONG64 EventsDropped;
+    ULONG64 ProcessesBlocked;
+    ULONG64 ProcessesTerminated;
+    ULONG64 EventsDelivered;       // GET_EVENT 로 전달 완료 (v0.1.2)
+    ULONG64 EventsFlushed;         // 엔진 해제·언로드 시 폐기 (v0.1.2)
+} ARW_STATUS_RESPONSE, * PARW_STATUS_RESPONSE;
+
+// 항등식: EventsGenerated == EventsDelivered + EventsDropped + EventsFlushed + QueueDepth
+// 56B 구버전 헤더로의 재퇴행 방지 검증선. 변경 시 유저·커널 양쪽 재빌드 필수 (불일치 = IOCTL 오류 122).
+C_ASSERT(sizeof(ARW_STATUS_RESPONSE) == 72);
+
+// ---------------------------------------------------------------
+// IOCTL_RG_UPDATE_POLICY 입력
+//   FastPathMode 는 ARW_FASTPATH_MODE_BLOCK 이하로 범위 검증된다.
+//   Enable* 는 BOOLEAN 이 아닌 ULONG — '!= 0' 으로 비교되고,
+//   유저/커널 간 레이아웃을 4바이트로 고정하기 위함.
+// ---------------------------------------------------------------
+typedef struct _ARW_POLICY_REQUEST {
+    ULONG Magic;
+    ULONG Version;
+    ULONG FastPathMode;           // ARW_FASTPATH_MODE_*
+    ULONG EnableProcessMonitor;
+    ULONG EnableSelfProtect;
+} ARW_POLICY_REQUEST, * PARW_POLICY_REQUEST;
+
+#pragma pack(pop)
+
+// ---------------------------------------------------------------
+// IOCTL
+//   이름은 Communication.c 의 switch 문에서 확인됨.
+//   기능 코드(0x800~)는 미확인 — 원본 값이 다르면 유저모드와
+//   어긋나 ERROR_INVALID_FUNCTION 이 난다. 엔진 측과 대조 필요.
+// ---------------------------------------------------------------
+#define RG_DEVICE_TYPE  0x8123
+
+#define IOCTL_RG_REGISTER_ENGINE \
+    CTL_CODE(RG_DEVICE_TYPE, 0x800, METHOD_BUFFERED, FILE_WRITE_DATA)
+#define IOCTL_RG_UNREGISTER_ENGINE \
+    CTL_CODE(RG_DEVICE_TYPE, 0x801, METHOD_BUFFERED, FILE_WRITE_DATA)
+#define IOCTL_RG_TERMINATE_PROCESS \
+    CTL_CODE(RG_DEVICE_TYPE, 0x802, METHOD_BUFFERED, FILE_WRITE_DATA)
+#define IOCTL_RG_UPDATE_POLICY \
+    CTL_CODE(RG_DEVICE_TYPE, 0x803, METHOD_BUFFERED, FILE_WRITE_DATA)
+#define IOCTL_RG_GET_STATUS \
+    CTL_CODE(RG_DEVICE_TYPE, 0x804, METHOD_BUFFERED, FILE_READ_DATA)
+
+// 역방향. 요청이 manual 큐에 적체되었다가 이벤트 발생 시 완료된다.
+#define IOCTL_RG_GET_EVENT \
+    CTL_CODE(RG_DEVICE_TYPE, 0x805, METHOD_BUFFERED, FILE_READ_DATA)
+
+// user-mode(VssComHook) -> kernel. VssComHook.cpp:35 TODO 근거.
+#define IOCTL_RG_REPORT_VSS_ATTEMPT \
+    CTL_CODE(RG_DEVICE_TYPE, 0x806, METHOD_BUFFERED, FILE_WRITE_DATA)
