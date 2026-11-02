@@ -1,0 +1,8 @@
+﻿  Anti_Ransom_TestClient.cpp
+C:\Users\dbsrn\Documents\Ransom0Dev\knel\Kernel_test\Anti_Ransom_TestClient.cpp(18,31): error C2220: 다음 경고는 오류로 처리됩니다.
+C:\Users\dbsrn\Documents\Ransom0Dev\knel\Kernel_test\Anti_Ransom_TestClient.cpp(18,31): warning C4245: '인수': 'int'에서 'DWORD'(으)로의 변환입니다. signed 또는 unsigned가 일치하지 않습니다.
+C:\Users\dbsrn\Documents\Ransom0Dev\knel\Kernel_test\Anti_Ransom_TestClient.cpp(63,34): warning C4245: '인수': 'int'에서 'DWORD'(으)로의 변환입니다. signed 또는 unsigned가 일치하지 않습니다.
+C:\Users\dbsrn\Documents\Ransom0Dev\knel\Kernel_test\Anti_Ransom_TestClient.cpp(223,9): warning C4245: '인수': 'int'에서 'DWORD'(으)로의 변환입니다. signed 또는 unsigned가 일치하지 않습니다.
+C:\Users\dbsrn\Documents\Ransom0Dev\knel\Kernel_test\Anti_Ransom_TestClient.cpp(260,9): warning C4245: '인수': 'int'에서 'DWORD'(으)로의 변환입니다. signed 또는 unsigned가 일치하지 않습니다.
+C:\Users\dbsrn\Documents\Ransom0Dev\knel\Kernel_test\Anti_Ransom_TestClient.cpp(285,9): warning C4245: '인수': 'int'에서 'DWORD'(으)로의 변환입니다. signed 또는 unsigned가 일치하지 않습니다.
+C:\Users\dbsrn\Documents\Ransom0Dev\knel\Kernel_test\Anti_Ransom_TestClient.cpp(328,13): warning C4245: '인수': 'int'에서 'DWORD'(으)로의 변환입니다. signed 또는 unsigned가 일치하지 않습니다.

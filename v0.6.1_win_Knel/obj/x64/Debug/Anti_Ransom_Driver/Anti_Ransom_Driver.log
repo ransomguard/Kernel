@@ -1,0 +1,22 @@
+﻿  Building 'Anti_Ransom_Driver' with toolset 'WindowsKernelModeDriver10.0' and the 'Desktop' target platform.
+  Stamping C:\Users\dbsrn\Documents\Ransom0Dev\knel\obj\x64\Debug\Anti_Ransom_Driver\Anti_Ransom_Driver.inf
+  Stamping [Version] section with DriverVer=11/02/2026,12.10.3.813
+  Communication.c
+C:\Users\dbsrn\Documents\Ransom0Dev\knel\Anti_Ransom_Driver\Communication.c(1,1): error C2220: 다음 경고는 오류로 처리됩니다.
+C:\Users\dbsrn\Documents\Ransom0Dev\knel\Anti_Ransom_Driver\Communication.c(1,1): warning C4117: 매크로 이름 '_KERNEL_MODE'은(는) 예약되었습니다. '#define'이(가) 무시됩니다.
+  Driver.c
+C:\Users\dbsrn\Documents\Ransom0Dev\knel\Anti_Ransom_Driver\Driver.c(1,1): error C2220: 다음 경고는 오류로 처리됩니다.
+C:\Users\dbsrn\Documents\Ransom0Dev\knel\Anti_Ransom_Driver\Driver.c(1,1): warning C4117: 매크로 이름 '_KERNEL_MODE'은(는) 예약되었습니다. '#define'이(가) 무시됩니다.
+  Eventqueue.c
+C:\Users\dbsrn\Documents\Ransom0Dev\knel\Anti_Ransom_Driver\Eventqueue.c(1,1): error C2220: 다음 경고는 오류로 처리됩니다.
+C:\Users\dbsrn\Documents\Ransom0Dev\knel\Anti_Ransom_Driver\Eventqueue.c(1,1): warning C4117: 매크로 이름 '_KERNEL_MODE'은(는) 예약되었습니다. '#define'이(가) 무시됩니다.
+  ProcessMonitor.c
+C:\Users\dbsrn\Documents\Ransom0Dev\knel\Anti_Ransom_Driver\ProcessMonitor.c(1,1): error C2220: 다음 경고는 오류로 처리됩니다.
+C:\Users\dbsrn\Documents\Ransom0Dev\knel\Anti_Ransom_Driver\ProcessMonitor.c(1,1): warning C4117: 매크로 이름 '_KERNEL_MODE'은(는) 예약되었습니다. '#define'이(가) 무시됩니다.
+  ResponseEngine.c
+C:\Users\dbsrn\Documents\Ransom0Dev\knel\Anti_Ransom_Driver\ResponseEngine.c(1,1): error C2220: 다음 경고는 오류로 처리됩니다.
+C:\Users\dbsrn\Documents\Ransom0Dev\knel\Anti_Ransom_Driver\ResponseEngine.c(1,1): warning C4117: 매크로 이름 '_KERNEL_MODE'은(는) 예약되었습니다. '#define'이(가) 무시됩니다.
+  SelfProtect.c
+C:\Users\dbsrn\Documents\Ransom0Dev\knel\Anti_Ransom_Driver\SelfProtect.c(1,1): error C2220: 다음 경고는 오류로 처리됩니다.
+C:\Users\dbsrn\Documents\Ransom0Dev\knel\Anti_Ransom_Driver\SelfProtect.c(1,1): warning C4117: 매크로 이름 '_KERNEL_MODE'은(는) 예약되었습니다. '#define'이(가) 무시됩니다.
+  코드를 생성하고 있습니다...
