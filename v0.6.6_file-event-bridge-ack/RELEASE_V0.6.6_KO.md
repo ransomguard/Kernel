@@ -1,10 +1,33 @@
 # RansomGuard Kernel v0.6.6 — 파일 이벤트 콜백 브리지 연결·ACK
 
+## HOTFIX1 — 2026-11-04 (v0.6.6 업데이트, v0.6.7 아님)
+
+첫 v0.6.6 빌드는 Windows 10 호스트 VS 2022/WDK 26100에서 **3/3 성공**, VM에서 두 드라이버·카탈로그 서명 모두 `Valid`, 새 DriverStore 경로까지 확인되었다. VM의 실제 실행 결과는 다음과 같다.
+
+| VM 관측 | 결과 |
+| --- | --- |
+| 메인 제어 드라이버 | v0.6.6 `RUNNING`, `receiver registered` 출력 |
+| 미니필터 이미지 경로 | 레지스트리 `ImagePath`를 확장한 `Test-Path` → `True` |
+| 미니필터 로드 | `fltmc load`: `0x80070002`, DriverEntry의 `ExCreateCallback(Create=FALSE)`가 `STATUS_OBJECT_NAME_NOT_FOUND (0xC0000034)` 반환 |
+| 정리 | 메인 `sc.exe stop` 성공, `STOPPED` |
+
+**원인:** 메인 드라이버가 `ExCreateCallback(Create=TRUE)`를 호출하면서 `OBJ_PERMANENT`를 생략했다. API가 객체 포인터를 반환하더라도 *임시 객체의 핸들 수가 0이 되면 이름이 사라질 수 있어* 다른 드라이버가 `Create=FALSE`로 그 이름을 열 수 없었다. 이는 v0.6.5의 `ExNotifyCallback 1,083회 / sink-enter 0회`도 설명한다. Microsoft의 [ExCreateCallback](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-excreatecallback) 문서는 `OBJ_PERMANENT`를 권장한다.
+
+이번 HOTFIX1에서는 **기존 `v0.6.6_file-event-bridge-ack` 폴더와 ZIP 이름을 유지**한다. 새 릴리스 폴더는 만들지 않는다.
+
+- `Anti_Ransom_Driver/Eventqueue.c`: 이름이 이미 존재하면 타 구성요소의 객체를 소유하지 않도록 거절; `OBJ_PERMANENT | OBJ_CASE_INSENSITIVE`로 생성; `ObOpenObjectByPointer(OBJ_KERNEL_HANDLE, DELETE)` 핸들을 보유하여 언로드/등록 실패 시 `ZwMakeTemporaryObject` → `ZwClose` → `ObDereferenceObject`로 정리; 메인 내부에서도 `ExCreateCallback(Create=FALSE)`로 이름 재열기 확인.
+- `Anti_Ransom_Driver/Driver.c`: `v0.6.6 HOTFIX1` 시작 로그 추가, 파일 수신기 초기화에 실패하면 **정상 작동으로 오인하지 않고 드라이버 기동을 중단**.
+- `Anti_Ransom_Driver/Anti_Ransom_Driver.inf`: **`DriverVer=11/04/2026,0.6.6.1`**. 수정본이 같은 날짜·같은 `0.6.6.0` 패키지로 처리되지 않도록 패치 빌드를 구분한다.
+- `Anti_Ransom_FsFilter` 소스/INF `0.6.6.0`와 `Kernel_test`는 **변경 없음**. 이미 서명·설치된 v0.6.6 미니필터와 기존 TestClient를 그대로 사용한다. 두 커널 사이 공유 receipt/IOCTL ABI도 불변.
+- 성공 조건: 메인 `HOTFIX1 named-callback lifetime fix active`, `HOTFIX named callback open-by-name verified`, 미니필터 `probe ACK verified`, 그 뒤 실제 파일 이벤트 type=4/5 수신.
+
+**검증 상태:** 첫 v0.6.6 빌드는 성공/VM 로드 실패가 확인됐다. **HOTFIX1 소스는 WDK 재빌드 및 실 VM 검증 전**이므로 복구 성공을 주장하지 않는다. 반드시 [VM_LAB_V0.6.6_KO.md](VM_LAB_V0.6.6_KO.md)의 HOTFIX1 절차를 먼저 따른다.
+
 ## 릴리스 상태
 
 - 기준: `v0.6.5_file-pipeline-diagnostics`
 - 성격: **커널 간 파일 이벤트 전달 경로 수정 및 실패 검출 강화**, 관측 전용
-- Windows 11 VM 실제 빌드·서명·실행: **미검증**. Windows 10 개발 호스트의 VS 2022/WDK 26100에서 빌드하고 격리 VM에서 확인해야 한다.
+- Windows 11 VM 실제 빌드·서명·실행: **첫 v0.6.6은 빌드·서명 성공, 로드 실패 원인 확인; HOTFIX1은 미검증**. Windows 10 개발 호스트의 VS 2022/WDK 26100에서 수정본을 빌드하고 격리 VM에서 확인해야 한다.
 - 소스 ZIP에는 **빌드·서명된 `.sys/.cat/.cer` 파일이 없다.** GitHub ZIP을 그대로 VM에서 설치하지 않는다.
 - 다른 저장소의 복구·JEV·대시보드·방화벽 코드는 변경하지 않았다.
 
@@ -33,7 +56,7 @@ VMware Windows 11 가상 머신에서 v0.6.5 두 드라이버의 빌드·테스�
 | `Anti_Ransom_Driver/Eventqueue.c` | `Argument1=NULL` probe에는 ACK만 반환하며 이벤트 큐에는 넣지 않는다. 실제 파일 이벤트는 기존 검증과 큐 Push 후 그 NTSTATUS를 ACK에 기록한다. v0.6.5 송신자의 `Argument2=NULL`도 계속 수신한다. |
 | `Shared/Common.h` | **커널 전용** `ARW_FILE_BRIDGE_RECEIPT`(16B), 매직/버전 추가. 사용자 모드 IPC 구조체와 IOCTL 번호는 변경하지 않는다. |
 | `Anti_Ransom_Driver/Driver.c` | `v0.6.6 FILE_BRIDGE` 시작 로그로 로드된 이미지 식별. |
-| `Anti_Ransom_Driver/*.inf`, `Anti_Ransom_FsFilter/*.inf` | `DriverVer=11/04/2026,0.6.6.0`. INF stamping은 빌드 산출물의 표시 날짜를 변경할 수 있다. |
+| `Anti_Ransom_Driver/*.inf`, `Anti_Ransom_FsFilter/*.inf` | 첫 빌드는 둘 다 `0.6.6.0`; HOTFIX1은 **메인만 `0.6.6.1`**, 미니필터는 `0.6.6.0` 유지. INF stamping은 빌드 산출물의 표시 날짜를 변경할 수 있다. |
 | `VM_LAB_V0.6.6_KO.md` | 기존 VM에서 패키지를 교체하고 probe·실제 파일 이벤트를 검증하는 단계별 절차. |
 
 ### 커널 콜백 계약
@@ -51,7 +74,7 @@ VMware Windows 11 가상 머신에서 v0.6.5 두 드라이버의 빌드·테스�
 - 기존 사용자 모드 `ARW_EVENT_HEADER`, `ARW_PROCESS_EVENT`(1616B), `ARW_FILE_EVENT`(2232B), `ARW_MAX_EVENT_SIZE`, 이벤트 종류 1~5, IOCTL/정책 바이트 구조는 불변이다.
 - **로드 순서가 필수:** `Anti_Ransom_Driver` → `Anti_Ransom_FsFilter`. 미니필터를 먼저 시작하면 기존 수신 콜백 객체가 없어 로드 실패가 정상이다.
 - **언로드 순서:** `Anti_Ransom_FsFilter` → `Anti_Ransom_Driver`. 자기보호가 켜져 언로드가 거부되면 우회하지 않는다.
-- v0.6.6 미니필터와 오래된 메인 v0.6.5를 혼용하면 probe ACK를 지원하지 않아 로드가 실패한다. **두 프로젝트를 모두 같은 버전으로 빌드·서명·설치해야 한다.**
+- v0.6.6 미니필터와 오래된 메인 v0.6.5를 혼용하면 probe ACK를 지원하지 않아 로드가 실패한다. **HOTFIX1 메인 `0.6.6.1`과 기존 v0.6.6 미니필터 `0.6.6.0`은 커널 콜백 계약이 동일해 의도적으로 함께 사용한다.**
 - 격리 VM 전용 임시 altitude `385090`은 Microsoft 정식 할당값이 아니므로 배포에 사용하면 안 된다.
 - `--policy audit`로만 검사한다. 파일 선차단·자동 kill·엔진 복구·JEV 통신·방화벽 전체 통합은 이 릴리스의 범위 밖이다.
 - 신뢰할 수 있는 루트/게시자에 테스트 인증서를 등록하는 작업은 **스냅샷이 있는 VM 안에서만** 한다. 호스트 Windows 테스트 서명 설정·인증서 저장소는 변경하지 않는다.

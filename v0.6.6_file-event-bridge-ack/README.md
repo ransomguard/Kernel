@@ -2,7 +2,9 @@
 
 사용자의 `knel` 저장소에 넣을 Windows 커널 소스다. 이 폴더에는 복구/JEV Python 코드를 넣지 않았다. 복구·VSS 생성·예약 작업·JEV·사용자 모드 분류와 로그는 별도 `store` 압축파일에 있다.
 
-**v0.6.6 변경:** v0.6.5 Windows 11 VM 실제 검사에서 미니필터가 `ExNotifyCallback`을 **1,083회 호출**했지만 메인 드라이버의 `sink-enter`는 **0회**였다. 미니필터가 새 콜백 객체를 만들지 않고 이미 등록된 메인 드라이버의 이름 있는 객체를 **열도록(Create=FALSE)** 변경했다. 필터 활성화 전 큐에 남지 않는 동기식 연결 검증(probe)을 수행하고, 실제 파일 이벤트에도 16바이트 커널 내부 수신 확인(receipt)을 붙여 큐 등록 성공/거절/수신 부재를 구분한다. 수신자가 없으면 필터 로드를 실패 처리하므로 이전처럼 조용히 이벤트가 유실되지 않는다. `DriverVer`는 `0.6.6.0`이다. **Windows 재빌드·VM 실기 검증 전이므로 최종 전달 복구 성공을 주장하지 않는다.** [VM_LAB_V0.6.6_KO.md](VM_LAB_V0.6.6_KO.md), [RELEASE_V0.6.6_KO.md](RELEASE_V0.6.6_KO.md) 참조.
+**2026-11-04 v0.6.6 HOTFIX1 (같은 릴리스 경로 유지):** VM에서 첫 v0.6.6 빌드의 메인 드라이버는 RUNNING, 미니필터 `.sys` 존재 검사 `True`였으나 `ExCreateCallback(Create=FALSE)`가 `STATUS_OBJECT_NAME_NOT_FOUND (0xC0000034)`로 실패했다. 메인 드라이버가 콜백 객체를 `OBJ_PERMANENT` 없이 생성하여 이름이 사라지는 것이 원인이다. **메인 `Anti_Ransom_Driver/Eventqueue.c`에서 영구 명명, 이름으로 다시 열어 확인, 언로드 때 `ZwMakeTemporaryObject` 정리를 추가했고 연결 실패 시 메인도 기동 실패 처리했다.** 메인 INF만 `0.6.6.1`로 올려 새 드라이버 패키지를 구분한다. 미니필터 소스/INF(`0.6.6.0`), 사용자 모드 IPC는 수정하지 않았다. **기존 VM에 정상 서명·설치된 v0.6.6 미니필터는 재설치할 필요가 없으며, 메인 드라이버만 재빌드·재서명·교체해야 한다.** 이 수정본의 WDK 빌드 및 실제 VM 연결은 아직 미검증이다. [VM_LAB_V0.6.6_KO.md](VM_LAB_V0.6.6_KO.md) 맨 위 HOTFIX1 절차 참고.
+
+**최초 v0.6.6 변경(유지):** v0.6.5 Windows 11 VM 실제 검사에서 미니필터가 `ExNotifyCallback`을 **1,083회 호출**했지만 메인 드라이버의 `sink-enter`는 **0회**였다. 미니필터가 새 콜백 객체를 만들지 않고 이미 등록된 메인 드라이버의 이름 있는 객체를 **열도록(Create=FALSE)** 변경했다. 필터 활성화 전 큐에 남지 않는 동기식 연결 검증(probe)을 수행하고, 실제 파일 이벤트에도 16바이트 커널 내부 수신 확인(receipt)을 붙여 큐 등록 성공/거절/수신 부재를 구분한다. 수신자가 없으면 필터 로드를 실패 처리하므로 이전처럼 조용히 이벤트가 유실되지 않는다. 최초 `DriverVer`는 두 프로젝트 모두 `0.6.6.0`이었다. **HOTFIX1의 메인만 `0.6.6.1`로 변경됐다.** 아직 커널 간 실제 파일 이벤트 전달 복구 성공을 주장하지 않는다. [VM_LAB_V0.6.6_KO.md](VM_LAB_V0.6.6_KO.md), [RELEASE_V0.6.6_KO.md](RELEASE_V0.6.6_KO.md) 참조.
 
 **v0.6.5 변경(검증 완료 범위):** `Anti_Ransom_FsFilter/FsFilter.c`와 `Anti_Ransom_Driver/Eventqueue.c`에 단계별 진단을 추가했다. VM에서 두 드라이버 빌드·서명·로드 및 파일 감지 동작은 검증됐지만, 커널 간 파일 이벤트 콜백 수신이 0건으로 확인되었다. 자세한 기존 검사 기록은 [VM_LAB_V0.6.5_KO.md](VM_LAB_V0.6.5_KO.md), [RELEASE_V0.6.5_KO.md](RELEASE_V0.6.5_KO.md)를 참조한다.
 
@@ -16,7 +18,7 @@
 
 | 경로 | 역할 / 현재 범위 |
 | --- | --- |
-| `RansomGuard.sln`, `RansomGuard.props` | Visual Studio/WDK 빌드 구성. v0.6.5 Windows 빌드는 성공, **v0.6.6은 아직 미검증** |
+| `RansomGuard.sln`, `RansomGuard.props` | Visual Studio/WDK 빌드 구성. 첫 v0.6.6 빌드/서명은 사용자 VM 환경에서 성공, **HOTFIX1은 아직 미검증** |
 | `Anti_Ransom_Driver/ProcessMonitor.c` | 프로세스 생성·종료 이벤트, fast path 규칙. 새 설치 기본은 AUDIT; BLOCK 모드는 프로세스 생성 거부 |
 | `Anti_Ransom_Driver/ResponseEngine.c` | PID와 예상 생성 시간을 검증한 종료 요청 |
 | `Anti_Ransom_Driver/Communication.c` | 엔진 등록·권한 확인·IOCTL, 이벤트 전달 |

@@ -177,6 +177,7 @@ DriverEntry(
     ARW_LOG("DriverEntry: initialization started (version 0x%08X).\n",
         ARW_DRIVER_VERSION);
     ARW_LOG("v0.6.6 FILE_BRIDGE control driver image loaded.\n");
+    ARW_LOG("v0.6.6 HOTFIX1 named-callback lifetime fix active.\n");
 
     WDF_DRIVER_CONFIG_INIT(&config, WDF_NO_EVENT_CALLBACK);
 
@@ -225,15 +226,15 @@ DriverEntry(
 
     // 1-1) 파일 이벤트 싱크 — 미니필터(Anti_Ransom_FsFilter)가 콜백 객체로 보내는
     //      ARW_FILE_EVENT 를 위 이벤트 큐로 받는다. 큐가 준비된 뒤에만 연다.
-    //      실패해도 드라이버 전체를 내리지는 않는다(프로세스 감시는 계속 유효,
-    //      파일 이벤트만 유실).
+    //      HOTFIX1: 이 등록 실패는 미니필터와의 연결이 불가능한 상태다.
+    //      연결 불능을 정상 기동으로 오인하지 않도록 드라이버 기동도 실패 처리.
     status = ArwFileEventSinkInitialize();
     if (NT_SUCCESS(status)) {
         g_FileEventSinkStarted = TRUE;
     }
     else {
-        ARW_LOG("FileEventSink init failed (0x%08X) - continuing without it.\n", status);
-        status = STATUS_SUCCESS;
+        ARW_LOG("FileEventSink init failed (0x%08X) - aborting disconnected startup.\n", status);
+        goto RollBack;
     }
 
     // 2) 프로세스 감시

@@ -356,6 +356,9 @@ VOID ArwEvtIoCanceledOnQueue(_In_ WDFQUEUE Queue, _In_ WDFREQUEST Request)
 // ===========================================================================
 static PCALLBACK_OBJECT g_FileEventCallbackObject = NULL;
 static PVOID            g_FileEventCallbackHandle = NULL;
+// The creator retains a DELETE-capable kernel handle so that a PERMANENT
+// callback object can be made temporary again on every unload/rollback path.
+static HANDLE           g_FileEventCallbackCleanupHandle = NULL;
 static volatile LONG    g_SinkActive = 0;
 // v0.6.6: nonpaged, lock-free counters to locate a missing file-event hop.
 // Console messages are power-of-two sampled to avoid per-I/O debug output.
@@ -487,11 +490,42 @@ ArwpFileEventSinkRoutine(
 }
 
 _IRQL_requires_(PASSIVE_LEVEL)
+static VOID ArwpFileEventCallbackReleaseOwnedObject(VOID)
+{
+    NTSTATUS status;
+
+    PAGED_CODE();
+
+    if (g_FileEventCallbackCleanupHandle != NULL) {
+        // ExCreateCallback returns a pointer, NOT a persistent object handle.
+        // We created the name with OBJ_PERMANENT; remove that property before
+        // dropping our last reference, or a stale callback object leaks.
+        status = ZwMakeTemporaryObject(g_FileEventCallbackCleanupHandle);
+        if (!NT_SUCCESS(status)) {
+            ARW_LOG("v0.6.6 HOTFIX callback cleanup ZwMakeTemporaryObject "
+                "FAILED (0x%08X); reboot lab VM before retry.\n", status);
+        } else {
+            ARW_LOG("v0.6.6 HOTFIX callback made temporary for cleanup.\n");
+        }
+        ZwClose(g_FileEventCallbackCleanupHandle);
+        g_FileEventCallbackCleanupHandle = NULL;
+    }
+
+    if (g_FileEventCallbackObject != NULL) {
+        ObDereferenceObject(g_FileEventCallbackObject);
+        g_FileEventCallbackObject = NULL;
+    }
+}
+
+_IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS ArwFileEventSinkInitialize(VOID)
 {
     NTSTATUS          status;
     UNICODE_STRING    name;
     OBJECT_ATTRIBUTES oa;
+    OBJECT_ATTRIBUTES lookupAttributes;
+    PCALLBACK_OBJECT  existingObject = NULL;
+    PCALLBACK_OBJECT  reopenedObject = NULL;
 
     PAGED_CODE();
 
@@ -500,7 +534,29 @@ NTSTATUS ArwFileEventSinkInitialize(VOID)
     }
 
     RtlInitUnicodeString(&name, ARW_FILE_EVENT_CALLBACK_NAME);
-    InitializeObjectAttributes(&oa, &name, OBJ_CASE_INSENSITIVE, NULL, NULL);
+    InitializeObjectAttributes(&lookupAttributes, &name,
+        OBJ_CASE_INSENSITIVE, NULL, NULL);
+
+    // Refuse to take ownership of somebody else's permanent named object.
+    // Normally the name is absent because we removed it on the last unload.
+    status = ExCreateCallback(&existingObject, &lookupAttributes, FALSE, TRUE);
+    if (NT_SUCCESS(status)) {
+        ObDereferenceObject(existingObject);
+        ARW_LOG("v0.6.6 HOTFIX callback name %wZ already exists; "
+            "refusing to replace another owner. Reboot lab VM if stale.\n", &name);
+        return STATUS_OBJECT_NAME_COLLISION;
+    }
+    if (status != STATUS_OBJECT_NAME_NOT_FOUND) {
+        ARW_LOG("v0.6.6 HOTFIX callback name preflight failed "
+            "(0x%08X).\n", status);
+        return status;
+    }
+
+    // v0.6.6 VM failure (0xC0000034): ExCreateCallback returns ONLY an object
+    // pointer. Without OBJ_PERMANENT its name can disappear as the temporary
+    // object's handle count reaches zero, even while this pointer remains.
+    InitializeObjectAttributes(&oa, &name,
+        OBJ_CASE_INSENSITIVE | OBJ_PERMANENT, NULL, NULL);
 
     // Main driver creates/owns the named callback and registers the receiver.
     // The minifilter v0.6.6 must OPEN this exact existing object (Create=FALSE),
@@ -512,12 +568,39 @@ NTSTATUS ArwFileEventSinkInitialize(VOID)
         return status;
     }
 
+    // ZwMakeTemporaryObject needs a DELETE-capable handle. Keep this kernel
+    // handle until unload, including when ExRegisterCallback later fails.
+    status = ObOpenObjectByPointer(g_FileEventCallbackObject,
+        OBJ_KERNEL_HANDLE, NULL, DELETE, NULL, KernelMode,
+        &g_FileEventCallbackCleanupHandle);
+    if (!NT_SUCCESS(status)) {
+        ARW_LOG("v0.6.6 HOTFIX cannot acquire callback cleanup handle "
+            "(0x%08X). Reboot lab VM before retry.\n", status);
+        ObDereferenceObject(g_FileEventCallbackObject);
+        g_FileEventCallbackObject = NULL;
+        return status;
+    }
+
+    // Catch loss of the object-manager name here, before a minifilter is even
+    // loaded. The VM must later prove a real receiver with its probe ACK.
+    status = ExCreateCallback(&reopenedObject, &lookupAttributes, FALSE, TRUE);
+    if (!NT_SUCCESS(status) || reopenedObject != g_FileEventCallbackObject) {
+        ARW_LOG("v0.6.6 HOTFIX callback open-by-name FAILED "
+            "(0x%08X); refusing disconnected startup.\n", status);
+        if (reopenedObject != NULL) {
+            ObDereferenceObject(reopenedObject);
+        }
+        ArwpFileEventCallbackReleaseOwnedObject();
+        return NT_SUCCESS(status) ? STATUS_OBJECT_TYPE_MISMATCH : status;
+    }
+    ObDereferenceObject(reopenedObject);
+    ARW_LOG("v0.6.6 HOTFIX named callback open-by-name verified on %wZ.\n", &name);
+
     g_FileEventCallbackHandle =
         ExRegisterCallback(g_FileEventCallbackObject, ArwpFileEventSinkRoutine, NULL);
     if (g_FileEventCallbackHandle == NULL) {
         ARW_LOG("ExRegisterCallback failed\n");
-        ObDereferenceObject(g_FileEventCallbackObject);
-        g_FileEventCallbackObject = NULL;
+        ArwpFileEventCallbackReleaseOwnedObject();
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
@@ -541,10 +624,7 @@ VOID ArwFileEventSinkUninitialize(VOID)
         ExUnregisterCallback(g_FileEventCallbackHandle);
         g_FileEventCallbackHandle = NULL;
     }
-    if (g_FileEventCallbackObject != NULL) {
-        ObDereferenceObject(g_FileEventCallbackObject);
-        g_FileEventCallbackObject = NULL;
-    }
+    ArwpFileEventCallbackReleaseOwnedObject();
     ARW_LOG("v0.6.6 FILE_DIAG summary: entered=%lld accepted=%lld "
         "rejected=%lld queued=%lld queueFailed=%lld probeAcked=%lld\n",
         g_FileDiagSinkEntered, g_FileDiagSinkAccepted,

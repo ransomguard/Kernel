@@ -1,5 +1,79 @@
 # RansomGuard v0.6.6 설치·검증 — 기존 v0.6.5 VMware 환경 기준
 
+## 먼저: 2026-11-04 HOTFIX1 적용 (v0.6.6의 최신 수정본)
+
+**이 절차가 현재 VM의 실제 상태에 맞는다. 아래 기존 초기 설치 가이드를 그대로 반복하지 않는다.** 첫 v0.6.6은 빌드/서명 성공 후 메인은 RUNNING이었지만 미니필터 로드에서 `0x80070002`; DebugView에서 `cannot open existing callback \\Callback\\ArwFileEvent (0xC0000034)`가 확인됐다. 미니필터 `.sys`는 실제 존재(`Test-Path=True`)했다. 그 뒤 메인을 정상 중지했다.
+
+원인은 메인 드라이버의 임시 callback 객체 이름이 사라지는 버그이다. HOTFIX1은 메인에 `OBJ_PERMANENT`를 추가하고 `ZwMakeTemporaryObject`로 안전한 언로드 정리를 한다. **미니필터 코드는 바꾸지 않았다.** 메인 `DriverVer`만 **`0.6.6.1`**, 기존 미니필터 `DriverVer`는 `0.6.6.0`이다. v0.6.7로 올리는 것이 아니라 같은 v0.6.6 소스를 갱신한 것이다.
+
+### A. 호스트에서 최신 소스 내려받기 및 메인만 다시 빌드
+
+1. GitHub `releases/RansomGuard-knel-v0.6.6-file-event-bridge-ack.zip`을 **다시 다운로드**한다. 이름이 이전 ZIP과 같으므로 다운로드 날짜를 확인하고 기존 압축을 혼용하지 않는다. 별도 새 폴더에 압축을 **완전히 추출**한다.
+2. `v0.6.6_file-event-bridge-ack\RansomGuard.sln`을 Visual Studio에서 열어 `Debug | x64`로 선택한다.
+3. `Anti_Ransom_Driver` 프로젝트 우클릭 → **다시 빌드**. 전체 솔루션을 다시 빌드해도 되지만 이미 VM에 있는 v0.6.6 미니필터를 교체할 필요는 없다. 성공 1개, 실패 0개 및 새 패키지 `Successfully signed`를 확인한다.
+4. 새 빌드의 `out\x64\Debug\Anti_Ransom_Driver\Anti_Ransom_Driver\`에서 `Anti_Ransom_Driver.sys`, `Anti_Ransom_Driver.inf`, `anti_ransom_driver.cat`을 함께 가져온다. 한 단계 바깥의 `Anti_Ransom_Driver.cer`도 서명 확인용으로 복사할 수 있다. `.pfx` 개인 키는 전송하지 않는다.
+5. 새 로그 마커는 `v0.6.6 HOTFIX1 named-callback lifetime fix active.`다. **이 마커가 보이지 않으면 이전 v0.6.6 파일이 실행된 것**이다.
+
+### B. VM에서 새 메인 패키지만 staging/서명/설치
+
+1. VM 네트워크 격리 유지. 기존 스냅샷 보존 및 **새 스냅샷**(예: `before-v066-hotfix1`)을 만들고 진행한다. 마지막 화면에서 메인 드라이버는 정상 `STOPPED`, 미니필터는 로드 실패 상태다.
+2. 새 파일 세 개를 **`C:\RG_Test\v066_fix1\Driver\`** 로컬 VM 경로에 복사한다. 이전 `C:\RG_Test\Anti_Ransom_Driver`를 덮어쓰지 않는다. 기존 `C:\RG_Test\Anti_Ransom_FsFilter`는 그대로 보존한다.
+3. 관리자 PowerShell에서:
+
+```powershell
+Get-ChildItem 'C:\RG_Test\v066_fix1\Driver' -File |
+    Where-Object { $_.Extension -in '.sys','.cat' } |
+    ForEach-Object { Get-AuthenticodeSignature -LiteralPath $_.FullName } |
+    Select-Object @{N='File';E={Split-Path $_.Path -Leaf}},Status |
+    Format-Table -AutoSize
+```
+
+새 `.sys`와 `.cat` **두 개가 모두 `Valid`**인지 확인한다. 서명자가 기존 신뢰된 인증서와 다르면 VM 내부에서 새 `.cer`의 서명자 지문을 확인한 후 등록해야 한다. 호스트 테스트 서명 설정은 바꾸지 않는다.
+
+4. `sc.exe query Anti_Ransom_Driver`가 `STOPPED`인지 확인한다. 그다음:
+
+```powershell
+sc.exe qc Anti_Ransom_Driver
+pnputil.exe /add-driver "C:\RG_Test\v066_fix1\Driver\Anti_Ransom_Driver.inf" /install
+sc.exe qc Anti_Ransom_Driver
+```
+
+새 `oemXX.inf`로 추가되고 `BINARY_PATH_NAME`이 **이전 v0.6.6 메인 DriverStore 경로에서 바뀌었는지** 비교한다. 패키지가 추가되었지만 이미지 경로가 같으면 여기서 멈추고 출력 화면을 보낸다. 기존 DriverStore 수동 교체·강제 삭제 금지. 미니필터 `pnputil` 설치는 반복하지 않는다.
+
+5. 경로 변경 확인 후 **VM만 재부팅**한다.
+
+### C. 로드/연결 재검증
+
+DebugView를 관리자 권한으로 먼저 실행하고 `Capture Kernel`, `Enable Verbose Kernel Output`을 켠 다음 관리자 PowerShell에서:
+
+```powershell
+sc.exe start Anti_Ransom_Driver
+sc.exe query Anti_Ransom_Driver
+```
+
+`RUNNING`이어야 하고 DebugView에서 아래 두 가지를 **모두** 확인한다.
+
+```text
+[RansomGuard] v0.6.6 HOTFIX1 named-callback lifetime fix active.
+[RansomGuard] v0.6.6 HOTFIX named callback open-by-name verified on \Callback\ArwFileEvent.
+```
+
+이어서:
+
+```powershell
+fltmc.exe load Anti_Ransom_FsFilter
+sc.exe query Anti_Ransom_FsFilter
+fltmc.exe instances -f Anti_Ransom_FsFilter
+```
+
+DebugView에서 **메인 `bridge-probe-ack count=1` 및 필터 `probe ACK verified`**를 확인한다. 두 서비스 `RUNNING`, C: 필터 연결을 확인한 후에만 아래 5절의 **기존 TestClient `--policy audit` 쓰기/이름 변경 실험**을 진행한다.
+
+여기서도 실패하면 재시도·강제 삭제하지 않고 **DebugView 실패 직후 로그/`sc qc`/PowerShell 오류 화면**을 보내준다. 완료 후엔 `fltmc unload Anti_Ransom_FsFilter` → `sc.exe stop Anti_Ransom_Driver` 순서로 정상 중지한다.
+
+---
+
+## 아래는 첫 v0.6.6 초기 설치 기록용 안내
+
 > **실험 VM 전용.** 2026-11-04 v0.6.5에서 확인한 `FsFilter ExNotifyCallback 1,083회 / Driver sink-enter 0회`를 다시 검사하기 위한 **미검증 수정 버전**이다. 호스트 Windows 10에서는 빌드만, 드라이버 설치·테스트 인증서 등록·실행은 스냅샷 있는 격리 Windows 11 VM에서만 한다. 두 드라이버 모두 반드시 v0.6.6으로 교체해야 한다.
 
 ## 0. 시작 상태 확인
