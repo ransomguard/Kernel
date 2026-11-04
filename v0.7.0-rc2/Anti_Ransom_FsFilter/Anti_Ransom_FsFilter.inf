@@ -1,0 +1,82 @@
+; Primitive minifilter package, x64 only. Windows validation is still required.
+; Altitude 385090 is provisional for an isolated VM lab ONLY.
+; It is NOT Microsoft-assigned: request an allocated altitude before distribution.
+; Do not restore 385100: Microsoft already assigns that altitude to MiniSpy.
+; The service is demand-start; building does not install or load the filter.
+
+[Version]
+Signature = "$WINDOWS NT$"
+Class = ActivityMonitor
+ClassGuid = {b86dff51-a31e-4bac-b3cf-e8cfe75c9fc2}
+Provider = %ProviderName%
+DriverVer = 11/05/2026,0.7.0.0
+CatalogFile = Anti_Ransom_FsFilter.cat
+PnpLockdown = 1
+
+[DestinationDirs]
+DriverFiles = 13
+
+[SourceDisksNames]
+1 = %DiskName%,,,
+
+[SourceDisksFiles]
+Anti_Ransom_FsFilter.sys = 1
+
+; Windows 10 / Windows 11 before 24H2 use service-root Instances.
+; The architecture entry is not an installer-enforced minimum OS version:
+; source support starts at Windows 10 2004 because it uses ExAllocatePool2.
+[DefaultInstall.NTamd64]
+CopyFiles = DriverFiles
+
+[DefaultInstall.NTamd64.Services]
+AddService = Anti_Ransom_FsFilter,,FsFilter.LegacyService
+
+; Windows 11 24H2+ uses Parameters\Instances.
+[DefaultInstall.NTamd64.10.0...26100]
+CopyFiles = DriverFiles
+
+[DefaultInstall.NTamd64.10.0...26100.Services]
+AddService = Anti_Ransom_FsFilter,,FsFilter.Service
+
+[FsFilter.LegacyService]
+DisplayName = %ServiceName%
+Description = %ServiceDescription%
+ServiceBinary = %13%\Anti_Ransom_FsFilter.sys
+ServiceType = 2
+StartType = 3
+ErrorControl = 1
+LoadOrderGroup = "FSFilter Activity Monitor"
+Dependencies = FltMgr
+AddReg = FsFilter.LegacyInstances
+
+[FsFilter.Service]
+DisplayName = %ServiceName%
+Description = %ServiceDescription%
+ServiceBinary = %13%\Anti_Ransom_FsFilter.sys
+ServiceType = 2
+StartType = 3
+ErrorControl = 1
+LoadOrderGroup = "FSFilter Activity Monitor"
+Dependencies = FltMgr
+AddReg = FsFilter.Instances
+
+[FsFilter.LegacyInstances]
+HKR,"Instances","DefaultInstance",0x00000000,%InstanceName%
+HKR,"Instances\"%InstanceName%,"Altitude",0x00000000,%InstanceAltitude%
+HKR,"Instances\"%InstanceName%,"Flags",0x00010001,0
+
+[FsFilter.Instances]
+HKR,"Parameters\Instances","DefaultInstance",0x00000000,%InstanceName%
+HKR,"Parameters\Instances\"%InstanceName%,"Altitude",0x00000000,%InstanceAltitude%
+HKR,"Parameters\Instances\"%InstanceName%,"Flags",0x00010001,0
+
+[DriverFiles]
+Anti_Ransom_FsFilter.sys
+
+[Strings]
+ProviderName = "RansomGuard University Project"
+DiskName = "RansomGuard file observation driver package"
+ServiceName = "RansomGuard file observation filter"
+ServiceDescription = "RansomGuard file write and rename observation"
+InstanceName = "RansomGuard observation instance"
+InstanceAltitude = "385090"

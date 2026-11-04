@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64"><Configuration>Debug</Configuration><Platform>x64</Platform></ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64"><Configuration>Release</Configuration><Platform>x64</Platform></ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <MinimumVisualStudioVersion>17.0</MinimumVisualStudioVersion>
+    <ProjectGuid>{702616F5-84E1-5422-78D4-A2833A90C55E}</ProjectGuid>
+    <RootNamespace>Anti_Ransom_Driver</RootNamespace>
+    <ProjectName>Anti_Ransom_Driver</ProjectName>
+    <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
+    <Platform Condition="'$(Platform)' == ''">x64</Platform>
+    <WindowsTargetPlatformVersion Condition="'$(WindowsTargetPlatformVersion)' == ''">10.0.26100.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Label="Configuration">
+    <ConfigurationType>Driver</ConfigurationType>
+    <PlatformToolset>WindowsKernelModeDriver10.0</PlatformToolset>
+    <UseDebugLibraries Condition="'$(Configuration)' == 'Debug'">true</UseDebugLibraries>
+    <UseDebugLibraries Condition="'$(Configuration)' == 'Release'">false</UseDebugLibraries>
+    <TargetVersion>Windows10</TargetVersion>
+    <DriverTargetPlatform>Desktop</DriverTargetPlatform>
+    <DriverType>KMDF</DriverType>
+    <KMDF_VERSION_MAJOR Condition="'$(KMDF_VERSION_MAJOR)' == ''">1</KMDF_VERSION_MAJOR>
+    <KMDF_VERSION_MINOR Condition="'$(KMDF_VERSION_MINOR)' == ''">31</KMDF_VERSION_MINOR>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="PropertySheets">
+    <Import Project="..\RansomGuard.props" />
+  </ImportGroup>
+  <PropertyGroup>
+    <TargetName>Anti_Ransom_Driver</TargetName>
+    <SignMode Condition="'$(SignMode)' == ''">TestSign</SignMode>
+    <RunInf2Cat>true</RunInf2Cat>
+    <Inf2CatUseLocalTime>true</Inf2CatUseLocalTime>
+    <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <Inf>
+      <SpecifyDriverVerDirectiveVersion>true</SpecifyDriverVerDirectiveVersion>
+      <TimeStamp>0.7.0.0</TimeStamp>
+    </Inf>
+    <ClCompile>
+      <CompileAs>CompileAsC</CompileAs>
+      <PreprocessorDefinitions>ARW_KERNEL_BUILD;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>wdmsec.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalOptions>/INTEGRITYCHECK %(AdditionalOptions)</AdditionalOptions>
+    </Link>
+    <DriverSign><FileDigestAlgorithm>sha256</FileDigestAlgorithm></DriverSign>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="Communication.c" />
+    <ClCompile Include="Driver.c" />
+    <ClCompile Include="Eventqueue.c" />
+    <ClCompile Include="ProcessMonitor.c" />
+    <ClCompile Include="ResponseEngine.c" />
+    <ClCompile Include="SelfProtect.c" />
+    <ClInclude Include="Communication.h" />
+    <ClInclude Include="Driver.h" />
+    <ClInclude Include="Eventqueue.h" />
+    <ClInclude Include="ProcessMonitor.h" />
+    <ClInclude Include="ResponseEngine.h" />
+    <ClInclude Include="SelfProtect.h" />
+    <ClInclude Include="..\Shared\Common.h" />
+    <ClInclude Include="..\Shared\CriticalProcess.h" />
+    <Inf Include="Anti_Ransom_Driver.inf" />
+    <FilesToPackage Include="$(TargetPath)" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>
