@@ -18,18 +18,26 @@
 - `Anti_Ransom_Driver/Eventqueue.c`: 이름이 이미 존재하면 타 구성요소의 객체를 소유하지 않도록 거절; `OBJ_PERMANENT | OBJ_CASE_INSENSITIVE`로 생성; `ObOpenObjectByPointer(OBJ_KERNEL_HANDLE, DELETE)` 핸들을 보유하여 언로드/등록 실패 시 `ZwMakeTemporaryObject` → `ZwClose` → `ObDereferenceObject`로 정리; 메인 내부에서도 `ExCreateCallback(Create=FALSE)`로 이름 재열기 확인.
 - `Anti_Ransom_Driver/Driver.c`: `v0.6.6 HOTFIX1` 시작 로그 추가, 파일 수신기 초기화에 실패하면 **정상 작동으로 오인하지 않고 드라이버 기동을 중단**.
 - `Anti_Ransom_Driver/Anti_Ransom_Driver.inf`: **`DriverVer=11/04/2026,0.6.6.1`**. 수정본이 같은 날짜·같은 `0.6.6.0` 패키지로 처리되지 않도록 패치 빌드를 구분한다.
-- `Anti_Ransom_FsFilter` 소스/INF `0.6.6.0`와 `Kernel_test`는 **변경 없음**. 이미 서명·설치된 v0.6.6 미니필터와 기존 TestClient를 그대로 사용한다. 두 커널 사이 공유 receipt/IOCTL ABI도 불변.
+- `Anti_Ransom_FsFilter` 소스/INF `0.6.6.0`와 `Kernel_test`는 **HOTFIX1 당시 변경 없음**. 이미 서명·설치된 v0.6.6 미니필터와 기존 TestClient로 실기 검증을 마쳤다. 두 커널 사이 공유 receipt/IOCTL ABI도 불변. 이후 `Kernel_test`에 **통계 출력만** 보완했다(아래 참고).
 - 성공 조건: 메인 `HOTFIX1 named-callback lifetime fix active`, `HOTFIX named callback open-by-name verified`, 미니필터 `probe ACK verified`, 그 뒤 실제 파일 이벤트 type=4/5 수신.
 
-**검증 상태:** 첫 v0.6.6 빌드는 성공/VM 로드 실패가 확인됐다. **HOTFIX1 소스는 WDK 재빌드 및 실 VM 검증 전**이므로 복구 성공을 주장하지 않는다. 반드시 [VM_LAB_V0.6.6_KO.md](VM_LAB_V0.6.6_KO.md)의 HOTFIX1 절차를 먼저 따른다.
+**검증 갱신(2026-11-04):** HOTFIX1도 Visual Studio/WDK에서 Debug x64 **3개 프로젝트 빌드·테스트 서명 성공**, 격리 Windows 11 VM에서 메인/미니필터 **양쪽 `RUNNING`**, 콜백 `open-by-name verified`와 `probe ACK verified`, C: 볼륨 연결, TestClient **`type=4` 및 `type=5` 수신**, 클라이언트 종료 후 양쪽 `STOPPED`를 실제 확인했다. 파일 이벤트 브리지/IPC 검증은 **통과**했지만 자동 탐지·차단·JEV·복구 성공을 의미하지는 않는다. 상세 관측치와 다음 큐 시험은 [QUEUE_STARTUP_VALIDATION_KO.md](QUEUE_STARTUP_VALIDATION_KO.md)에 기록했다.
 
 ## 릴리스 상태
 
 - 기준: `v0.6.5_file-pipeline-diagnostics`
 - 성격: **커널 간 파일 이벤트 전달 경로 수정 및 실패 검출 강화**, 관측 전용
-- Windows 11 VM 실제 빌드·서명·실행: **첫 v0.6.6은 빌드·서명 성공, 로드 실패 원인 확인; HOTFIX1은 미검증**. Windows 10 개발 호스트의 VS 2022/WDK 26100에서 수정본을 빌드하고 격리 VM에서 확인해야 한다.
+- Windows 11 VM 실제 빌드·서명·실행: **첫 v0.6.6은 콜백 오픈 실패; HOTFIX1은 빌드/서명/양 드라이버 로드 및 파일 이벤트 4·5 사용자 모드 전달/정상 종료까지 통과**. 후속 TestClient의 손실 구간 출력 보완은 아직 Windows에서 재빌드·실행 검증 전이다.
 - 소스 ZIP에는 **빌드·서명된 `.sys/.cat/.cer` 파일이 없다.** GitHub ZIP을 그대로 VM에서 설치하지 않는다.
 - 다른 저장소의 복구·JEV·대시보드·방화벽 코드는 변경하지 않았다.
+
+## 같은 v0.6.6 후속 개선 — 큐 손실 구간 구분 (2026-11-04)
+
+파일 이벤트 전달 실기 성공 후, TestClient 최초 상태 `generated=1405, dropped=381, depth=1024`와 마지막 DriverUnload 집계 `generated=1844, dropped=381`을 비교했다. `1405-381=1024`는 코드상 큐 최대 깊이와 정확히 일치하며, **수신기 등록 전에 쌓인 이벤트가 가득 찬 큐의 이전 이벤트를 밀어낸 것**과 일치한다. 수신기 등록 후 관측된 추가 손실은 0이었다. 장시간 고부하 상황에서 손실이 절대 발생하지 않는다는 뜻은 아니다.
+
+- `Kernel_test/Anti_Ransom_TestClient.cpp`: 기존 `[수신 후 상태]`에 `EventsDropped/Delivered/Flushed`와 **`수신 중 추가 손실 = 최종 EventsDropped − 최초 EventsDropped`**를 출력하도록 추가. IOCTL/ABI 변경 없음.
+- `QUEUE_STARTUP_VALIDATION_KO.md`: 수신기를 미니필터보다 먼저 등록하는 새 VM 확인 순서, 실제 이벤트 4·5 수신 증거 및 TestClient 종료 후 언로드 원칙 기록.
+- **두 드라이버의 C 소스, `.inf`, 커널 간 ACK 규약, 설치된 `.sys`는 변경하지 않음.** TestClient 추가 출력만 새 Windows 빌드가 필요하다.
 
 ## v0.6.5 실기 검증에서 확정된 현상 (2026-11-04)
 
@@ -90,4 +98,4 @@ VMware Windows 11 가상 머신에서 v0.6.5 두 드라이버의 빌드·테스�
 | 클라이언트 `type=4 (FILE_WRITE)` 및 `type=5 (FILE_RENAME)` | **커널 → 유저 모드 파일 이벤트 전달** 확인. |
 | `bridge-missing-ack` / `bridge-rejected-ack` | 메인 수신/검증/큐 적재 실패. 드라이버 원인 추가 조사 필요. |
 
-실제 VM에서 성공을 확인하기 전에는 **"v0.6.6 파일 이벤트 IPC 복구 완료"라고 판정하지 않는다.**
+2026-11-04 VMware VM 실제 검증에서 **"v0.6.6 파일 이벤트 타입 4·5 커널 → 사용자 모드 IPC 전달"은 성공**했다. 이 범위를 Track A/B 자동 방어·복구 전체 완료와 혼동하지 않는다. 수신기 미등록 시 큐 포화 문제와 고부하/재연결/장시간 시험은 남아 있다.

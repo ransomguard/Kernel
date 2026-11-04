@@ -2,7 +2,9 @@
 
 사용자의 `knel` 저장소에 넣을 Windows 커널 소스다. 이 폴더에는 복구/JEV Python 코드를 넣지 않았다. 복구·VSS 생성·예약 작업·JEV·사용자 모드 분류와 로그는 별도 `store` 압축파일에 있다.
 
-**2026-11-04 v0.6.6 HOTFIX1 (같은 릴리스 경로 유지):** VM에서 첫 v0.6.6 빌드의 메인 드라이버는 RUNNING, 미니필터 `.sys` 존재 검사 `True`였으나 `ExCreateCallback(Create=FALSE)`가 `STATUS_OBJECT_NAME_NOT_FOUND (0xC0000034)`로 실패했다. 메인 드라이버가 콜백 객체를 `OBJ_PERMANENT` 없이 생성하여 이름이 사라지는 것이 원인이다. **메인 `Anti_Ransom_Driver/Eventqueue.c`에서 영구 명명, 이름으로 다시 열어 확인, 언로드 때 `ZwMakeTemporaryObject` 정리를 추가했고 연결 실패 시 메인도 기동 실패 처리했다.** 메인 INF만 `0.6.6.1`로 올려 새 드라이버 패키지를 구분한다. 미니필터 소스/INF(`0.6.6.0`), 사용자 모드 IPC는 수정하지 않았다. **기존 VM에 정상 서명·설치된 v0.6.6 미니필터는 재설치할 필요가 없으며, 메인 드라이버만 재빌드·재서명·교체해야 한다.** 이 수정본의 WDK 빌드 및 실제 VM 연결은 아직 미검증이다. [VM_LAB_V0.6.6_KO.md](VM_LAB_V0.6.6_KO.md) 맨 위 HOTFIX1 절차 참고.
+**2026-11-04 v0.6.6 HOTFIX1 (같은 릴리스 경로 유지):** VM에서 첫 v0.6.6 빌드의 메인 드라이버는 RUNNING, 미니필터 `.sys` 존재 검사 `True`였으나 `ExCreateCallback(Create=FALSE)`가 `STATUS_OBJECT_NAME_NOT_FOUND (0xC0000034)`로 실패했다. 메인 드라이버가 콜백 객체를 `OBJ_PERMANENT` 없이 생성하여 이름이 사라지는 것이 원인이다. **메인 `Anti_Ransom_Driver/Eventqueue.c`에서 영구 명명, 이름으로 다시 열어 확인, 언로드 때 `ZwMakeTemporaryObject` 정리를 추가했고 연결 실패 시 메인도 기동 실패 처리했다.** 메인 INF 소스만 `0.6.6.1`로 올려 새 패키지를 구분한다. WDK로 생성된 실제 INF의 `DriverVer`는 빌드 시각 값으로 다시 스탬프될 수 있다. 미니필터 소스/INF(`0.6.6.0`)와 사용자 모드 IPC는 수정하지 않았다. **2026-11-04 VMware Windows 11 VM에서 HOTFIX1을 빌드·서명·로드하고 파일 쓰기 `type=4`, 이름 변경 `type=5`가 TestClient로 전달되는 것까지 확인했다.** 두 드라이버의 정상 언로드도 확인됐다. [실제 검증 기록과 큐 포화 분석](QUEUE_STARTUP_VALIDATION_KO.md)을 참고한다.
+
+**같은 v0.6.6의 후속 진단 보완:** `Kernel_test/Anti_Ransom_TestClient.cpp`에서 이벤트 수신 전·후의 `EventsDropped` 증가량을 비교하도록 출력만 보강했다. 실제 VM 측정에서 최초 `EventsGenerated=1405`, `EventsDropped=381`, `QueueDepth=1024`, 이후 `EventsGenerated=1844`, `EventsDropped=381`이었다. **이미 누적된 381건과 수신 중 새 손실 0건을 구분**해야 한다. 이 TestClient 출력 보완은 새 Windows 빌드가 필요하지만, **검증된 두 커널 드라이버 `.sys`를 교체할 필요는 없다.** 새로운 정책은 메인 → TestClient 등록 → 미니필터 순서로 시작해 초기 큐 포화를 최소화하는 것이다.
 
 **최초 v0.6.6 변경(유지):** v0.6.5 Windows 11 VM 실제 검사에서 미니필터가 `ExNotifyCallback`을 **1,083회 호출**했지만 메인 드라이버의 `sink-enter`는 **0회**였다. 미니필터가 새 콜백 객체를 만들지 않고 이미 등록된 메인 드라이버의 이름 있는 객체를 **열도록(Create=FALSE)** 변경했다. 필터 활성화 전 큐에 남지 않는 동기식 연결 검증(probe)을 수행하고, 실제 파일 이벤트에도 16바이트 커널 내부 수신 확인(receipt)을 붙여 큐 등록 성공/거절/수신 부재를 구분한다. 수신자가 없으면 필터 로드를 실패 처리하므로 이전처럼 조용히 이벤트가 유실되지 않는다. 최초 `DriverVer`는 두 프로젝트 모두 `0.6.6.0`이었다. **HOTFIX1의 메인만 `0.6.6.1`로 변경됐다.** 아직 커널 간 실제 파일 이벤트 전달 복구 성공을 주장하지 않는다. [VM_LAB_V0.6.6_KO.md](VM_LAB_V0.6.6_KO.md), [RELEASE_V0.6.6_KO.md](RELEASE_V0.6.6_KO.md) 참조.
 
@@ -18,7 +20,7 @@
 
 | 경로 | 역할 / 현재 범위 |
 | --- | --- |
-| `RansomGuard.sln`, `RansomGuard.props` | Visual Studio/WDK 빌드 구성. 첫 v0.6.6 빌드/서명은 사용자 VM 환경에서 성공, **HOTFIX1은 아직 미검증** |
+| `RansomGuard.sln`, `RansomGuard.props` | Visual Studio/WDK 빌드 구성. HOTFIX1 Debug x64 3/3 빌드·테스트 서명 및 격리 Windows 11 VM 실행 검증 성공; 새 TestClient 진단 출력은 재빌드 필요 |
 | `Anti_Ransom_Driver/ProcessMonitor.c` | 프로세스 생성·종료 이벤트, fast path 규칙. 새 설치 기본은 AUDIT; BLOCK 모드는 프로세스 생성 거부 |
 | `Anti_Ransom_Driver/ResponseEngine.c` | PID와 예상 생성 시간을 검증한 종료 요청 |
 | `Anti_Ransom_Driver/Communication.c` | 엔진 등록·권한 확인·IOCTL, 이벤트 전달 |

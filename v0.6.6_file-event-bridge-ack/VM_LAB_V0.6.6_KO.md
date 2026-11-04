@@ -1,10 +1,12 @@
 # RansomGuard v0.6.6 설치·검증 — 기존 v0.6.5 VMware 환경 기준
 
+> **2026-11-04 실기 검증 완료:** HOTFIX1 메인·미니필터를 Windows 11 VM에서 실행하고 `type=4 (FILE_WRITE)`와 `type=5 (FILE_RENAME)`의 TestClient 수신 및 정상 언로드까지 확인했다. **이미 검증을 마친 VM에서 아래 설치 작업을 다시 수행할 필요는 없다.** 다음 작업은 [QUEUE_STARTUP_VALIDATION_KO.md](QUEUE_STARTUP_VALIDATION_KO.md)의 수신기 선등록/큐 손실 재검증이다. 현재 소스의 TestClient는 수신 중 손실 증가량 출력을 추가했지만, 그 보완본의 Windows 빌드·실행은 아직 미검증이다.
+
 ## 먼저: 2026-11-04 HOTFIX1 적용 (v0.6.6의 최신 수정본)
 
 **이 절차가 현재 VM의 실제 상태에 맞는다. 아래 기존 초기 설치 가이드를 그대로 반복하지 않는다.** 첫 v0.6.6은 빌드/서명 성공 후 메인은 RUNNING이었지만 미니필터 로드에서 `0x80070002`; DebugView에서 `cannot open existing callback \\Callback\\ArwFileEvent (0xC0000034)`가 확인됐다. 미니필터 `.sys`는 실제 존재(`Test-Path=True`)했다. 그 뒤 메인을 정상 중지했다.
 
-원인은 메인 드라이버의 임시 callback 객체 이름이 사라지는 버그이다. HOTFIX1은 메인에 `OBJ_PERMANENT`를 추가하고 `ZwMakeTemporaryObject`로 안전한 언로드 정리를 한다. **미니필터 코드는 바꾸지 않았다.** 메인 `DriverVer`만 **`0.6.6.1`**, 기존 미니필터 `DriverVer`는 `0.6.6.0`이다. v0.6.7로 올리는 것이 아니라 같은 v0.6.6 소스를 갱신한 것이다.
+원인은 메인 드라이버의 임시 callback 객체 이름이 사라지는 버그이다. HOTFIX1은 메인에 `OBJ_PERMANENT`를 추가하고 `ZwMakeTemporaryObject`로 안전한 언로드 정리를 한다. **미니필터 코드는 바꾸지 않았다.** 메인 소스 INF의 `DriverVer`만 **`0.6.6.1`**, 기존 미니필터 소스 INF는 `0.6.6.0`이다. 실제 Windows 빌드에서는 WDK가 메인 산출물 INF에 `11/04/2026,21.31.48.764`를 스탬프한 사실도 확인했다. 버전 표기는 별도 정리 대상이지만 새 `oem17.inf` 패키지 설치와 HOTFIX1 실행 로그를 확인했다. v0.6.7로 올리는 것이 아니라 같은 v0.6.6 소스를 갱신한 것이다.
 
 ### A. 호스트에서 최신 소스 내려받기 및 메인만 다시 빌드
 
@@ -17,11 +19,11 @@
 ### B. VM에서 새 메인 패키지만 staging/서명/설치
 
 1. VM 네트워크 격리 유지. 기존 스냅샷 보존 및 **새 스냅샷**(예: `before-v066-hotfix1`)을 만들고 진행한다. 마지막 화면에서 메인 드라이버는 정상 `STOPPED`, 미니필터는 로드 실패 상태다.
-2. 새 파일 세 개를 **`C:\RG_Test\v066_fix1\Driver\`** 로컬 VM 경로에 복사한다. 이전 `C:\RG_Test\Anti_Ransom_Driver`를 덮어쓰지 않는다. 기존 `C:\RG_Test\Anti_Ransom_FsFilter`는 그대로 보존한다.
+2. 새 파일 세 개를 **`C:\RG_Test\v066_fix1\Anti_Ransom_Driver\`** 로컬 VM 경로에 복사한다(실제로 검증에 쓴 경로). 이전 `C:\RG_Test\Anti_Ransom_Driver`를 덮어쓰지 않는다. 기존 `C:\RG_Test\Anti_Ransom_FsFilter`는 그대로 보존한다.
 3. 관리자 PowerShell에서:
 
 ```powershell
-Get-ChildItem 'C:\RG_Test\v066_fix1\Driver' -File |
+Get-ChildItem 'C:\RG_Test\v066_fix1\Anti_Ransom_Driver' -File |
     Where-Object { $_.Extension -in '.sys','.cat' } |
     ForEach-Object { Get-AuthenticodeSignature -LiteralPath $_.FullName } |
     Select-Object @{N='File';E={Split-Path $_.Path -Leaf}},Status |
@@ -34,7 +36,7 @@ Get-ChildItem 'C:\RG_Test\v066_fix1\Driver' -File |
 
 ```powershell
 sc.exe qc Anti_Ransom_Driver
-pnputil.exe /add-driver "C:\RG_Test\v066_fix1\Driver\Anti_Ransom_Driver.inf" /install
+pnputil.exe /add-driver "C:\RG_Test\v066_fix1\Anti_Ransom_Driver\Anti_Ransom_Driver.inf" /install
 sc.exe qc Anti_Ransom_Driver
 ```
 
@@ -58,7 +60,13 @@ sc.exe query Anti_Ransom_Driver
 [RansomGuard] v0.6.6 HOTFIX named callback open-by-name verified on \Callback\ArwFileEvent.
 ```
 
-이어서:
+**큐 포화 재검증에서는 여기서 미니필터를 바로 로드하지 말고 먼저 별도 관리자 PowerShell에서 TestClient를 등록**한다. 아래처럼 `--policy audit`로 시작한 상태에서 다음 미니필터 로드를 진행하면, 수신기 등록 전에 파일 이벤트가 1,024개 쌓이는 상황을 줄일 수 있다.
+
+```powershell
+& 'C:\RG_Test\Anti_Ransom_TestClient.exe' 300 --policy audit
+```
+
+이어서 다른 관리자 PowerShell에서:
 
 ```powershell
 fltmc.exe load Anti_Ransom_FsFilter
@@ -66,7 +74,7 @@ sc.exe query Anti_Ransom_FsFilter
 fltmc.exe instances -f Anti_Ransom_FsFilter
 ```
 
-DebugView에서 **메인 `bridge-probe-ack count=1` 및 필터 `probe ACK verified`**를 확인한다. 두 서비스 `RUNNING`, C: 필터 연결을 확인한 후에만 아래 5절의 **기존 TestClient `--policy audit` 쓰기/이름 변경 실험**을 진행한다.
+DebugView에서 **메인 `bridge-probe-ack count=1` 및 필터 `probe ACK verified`**를 확인한다. 두 서비스 `RUNNING`, C: 필터 연결을 확인한 후에만 아래 5절의 **파일 쓰기/이름 변경 실험**을 진행한다. 이미 TestClient가 실행 중이면 두 번째 엔진을 등록하지 않는다.
 
 여기서도 실패하면 재시도·강제 삭제하지 않고 **DebugView 실패 직후 로그/`sc qc`/PowerShell 오류 화면**을 보내준다. 완료 후엔 `fltmc unload Anti_Ransom_FsFilter` → `sc.exe stop Anti_Ransom_Driver` 순서로 정상 중지한다.
 
@@ -209,7 +217,7 @@ fltmc.exe instances -f Anti_Ransom_FsFilter
 
 ## 5. 파일 쓰기·이름 변경 이벤트 테스트
 
-관리자 PowerShell **창 A**에서 기존 v0.6.4/v0.6.5 TestClient를 계속 사용해도 된다(유저 모드 이벤트 ABI 변경 없음).
+관리자 PowerShell **창 A**에서 기존 v0.6.4/v0.6.5 TestClient를 계속 사용해도 된다(유저 모드 이벤트 ABI 변경 없음). **위 C절에서 이미 시작했다면 다시 실행하지 않는다.**
 
 ```powershell
 & 'C:\RG_Test\Anti_Ransom_TestClient.exe' 300 --policy audit
@@ -236,7 +244,13 @@ Get-Item "C:\RG_Test\live_$id.renamed" |
 
 ## 6. 종료 및 결과 전달
 
-결과를 확인했으면 TestClient를 `Ctrl+C`로 정상 종료하고 DebugView를 계속 켜둔 채 다음 순서로 종료한다.
+결과를 확인했으면 TestClient를 `Ctrl+C`로 종료하거나 최대 건수 수신 후 `Press any key` 안내에 응해 **프로세스를 완전히 종료**한다. TestClient가 디바이스 핸들을 계속 열고 있으면 메인 드라이버가 `STOP_PENDING` 상태에 머무를 수 있다는 것이 2026-11-04 VM에서 확인됐다. 다음 조회가 **아무것도 반환하지 않아야** 한다.
+
+```powershell
+Get-Process Anti_Ransom_TestClient -ErrorAction SilentlyContinue
+```
+
+그 후 DebugView를 계속 켜둔 채 다음 순서로 종료한다.
 
 ```powershell
 fltmc.exe unload Anti_Ransom_FsFilter

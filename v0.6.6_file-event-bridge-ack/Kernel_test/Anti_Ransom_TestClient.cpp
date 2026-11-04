@@ -467,6 +467,9 @@ int main(int argc, char** argv) {
         std::cout << "\n[수신 후 상태]\n";
         std::cout << "  QueueDepth        : " << after.QueueDepth << "\n";
         std::cout << "  EventsGenerated   : " << after.EventsGenerated << "\n";
+        std::cout << "  EventsDropped     : " << after.EventsDropped << "\n";
+        std::cout << "  EventsDelivered   : " << after.EventsDelivered << "\n";
+        std::cout << "  EventsFlushed     : " << after.EventsFlushed << "\n";
 
         long long consumed =
             (long long)before.QueueDepth - (long long)after.QueueDepth;
@@ -479,6 +482,30 @@ int main(int argc, char** argv) {
         std::cout << "  측정 중 신규 발생 : " << newlyGen << "\n";
         std::cout << "  (큐감소 + 신규발생) = " << (consumed + newlyGen)
             << " / 기대 " << fetched << "\n";
+
+        // The driver's dropped counter is cumulative since DriverEntry.
+        // A full queue before this client registered must NOT be mistaken
+        // for additional loss while the registered engine was consuming.
+        if (after.EventsDropped >= before.EventsDropped) {
+            const ULONG64 droppedDuringReceive =
+                after.EventsDropped - before.EventsDropped;
+            std::cout << "  수신 시작 전 누적 손실 : " << before.EventsDropped << "\n";
+            std::cout << "  수신 중 추가 손실     : " << droppedDuringReceive << "\n";
+            if (droppedDuringReceive == 0) {
+                std::cout << "  [확인] 이번 수신 구간에서 추가 손실 없음\n";
+            }
+            else {
+                std::cout << "  [경고] 수신 중 이벤트 손실 발생; "
+                    << "부하/대기 요청/큐 적체를 조사하세요\n";
+            }
+        }
+        else {
+            std::cout << "  [경고] 손실 카운터 감소: 상태 스냅샷 또는 "
+                << "드라이버 재시작 여부 확인 필요\n";
+        }
+    }
+    else {
+        std::cout << "[경고] 수신 후 상태 조회 실패. Error=" << GetLastError() << "\n";
     }
 
     // 7. 정리
