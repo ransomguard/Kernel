@@ -1,0 +1,10 @@
+{
+  "version": "v0.9.1",
+  "date": "2026-11-18",
+  "fresh_windows11_validation": "pending",
+  "microsoft_signed": false,
+  "static_tests_passed": 4,
+  "native_c_test": "compiled; execution blocked by host antivirus WinError 225",
+  "runtime_c_cpp_changes": false,
+  "new_wdk_build": false
+}

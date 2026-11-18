@@ -1,0 +1,30 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 17.0.0.0
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Anti_Ransom_Driver", "Anti_Ransom_Driver\Anti_Ransom_Driver.vcxproj", "{702616F5-84E1-5422-78D4-A2833A90C55E}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Anti_Ransom_FsFilter", "Anti_Ransom_FsFilter\Anti_Ransom_FsFilter.vcxproj", "{A52DA217-87D8-4D5E-B3D5-23491E92D182}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Anti_Ransom_TestClient", "Kernel_test\Anti_Ransom_TestClient.vcxproj", "{D4865B5B-73E3-4108-80A9-06AF71AEDB3A}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{702616F5-84E1-5422-78D4-A2833A90C55E}.Debug|x64.ActiveCfg = Debug|x64
+		{702616F5-84E1-5422-78D4-A2833A90C55E}.Debug|x64.Build.0 = Debug|x64
+		{702616F5-84E1-5422-78D4-A2833A90C55E}.Release|x64.ActiveCfg = Release|x64
+		{702616F5-84E1-5422-78D4-A2833A90C55E}.Release|x64.Build.0 = Release|x64
+		{A52DA217-87D8-4D5E-B3D5-23491E92D182}.Debug|x64.ActiveCfg = Debug|x64
+		{A52DA217-87D8-4D5E-B3D5-23491E92D182}.Debug|x64.Build.0 = Debug|x64
+		{A52DA217-87D8-4D5E-B3D5-23491E92D182}.Release|x64.ActiveCfg = Release|x64
+		{A52DA217-87D8-4D5E-B3D5-23491E92D182}.Release|x64.Build.0 = Release|x64
+		{D4865B5B-73E3-4108-80A9-06AF71AEDB3A}.Debug|x64.ActiveCfg = Debug|x64
+		{D4865B5B-73E3-4108-80A9-06AF71AEDB3A}.Debug|x64.Build.0 = Debug|x64
+		{D4865B5B-73E3-4108-80A9-06AF71AEDB3A}.Release|x64.ActiveCfg = Release|x64
+		{D4865B5B-73E3-4108-80A9-06AF71AEDB3A}.Release|x64.Build.0 = Release|x64
+	EndGlobalSection
+EndGlobal
