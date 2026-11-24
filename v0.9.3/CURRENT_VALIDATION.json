@@ -1,0 +1,11 @@
+{
+  "installer": "v0.6.0-preview.15",
+  "source_folder": "v0.9.2",
+  "current_results_url": "https://github.com/ransomguard/installer/releases/tag/v0.6.0-preview.15",
+  "historical_docs_are_not_current_claims": true,
+  "kernel_static_tests": 4,
+  "backend_tests": null,
+  "microsoft_distribution_signed": false,
+  "portable_c_host_run": "NOT PASSED: host execution error",
+  "static_test_update": "Batch bound assertion updated from historical32 to current128; 4 static tests pass"
+}
