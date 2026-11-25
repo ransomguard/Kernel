@@ -67,6 +67,9 @@ ArwTerminateRansomwareProcess(
     HANDLE processHandle = NULL;
     ULONG64 actualCreateTime;
 
+#if !DBG
+    UNREFERENCED_PARAMETER(Reason);
+#endif
     PAGED_CODE();
     NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
 

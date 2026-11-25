@@ -154,7 +154,13 @@ NTSTATUS ArwInitializeCommunication(_In_ WDFDRIVER Driver)
     //
     // 변경: SDDL_DEVOBJ_SYS_ALL_ADM_ALL — SYSTEM + Administrators 전용.
     // =======================================================================
-    deviceInit = WdfControlDeviceInitAllocate(Driver, &SDDL_DEVOBJ_SYS_ALL_ADM_ALL);
+    {
+        // Allow only the dedicated SCM identity in addition to the existing OS administrators.
+        DECLARE_CONST_UNICODE_STRING(serviceDeviceSecurity,
+            L"D:P(A;;GA;;;SY)(A;;GA;;;BA)"
+            L"(A;;GRGW;;;S-1-5-80-3755250574-3201999084-3738073789-2921536738-940384076)");
+        deviceInit = WdfControlDeviceInitAllocate(Driver, &serviceDeviceSecurity);
+    }
     if (deviceInit == NULL) {
         return STATUS_INSUFFICIENT_RESOURCES;
     }

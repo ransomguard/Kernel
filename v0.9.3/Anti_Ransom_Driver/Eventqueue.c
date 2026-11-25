@@ -408,6 +408,11 @@ static VOID ArwpFileDiagCount(
     _In_ NTSTATUS Status)
 {
     LONG64 count = InterlockedIncrement64(Counter);
+#if !DBG
+    UNREFERENCED_PARAMETER(Stage);
+    UNREFERENCED_PARAMETER(EventType);
+    UNREFERENCED_PARAMETER(Status);
+#endif
     if (count > 0 && (count & (count - 1)) == 0) {
         ARW_LOG("v0.6.6 FILE_DIAG %s count=%lld type=%lu status=0x%08X\n",
             Stage, count, EventType, (ULONG)Status);
